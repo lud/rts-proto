@@ -5,6 +5,7 @@ defmodule ECS.OperatorTest do
 
   @id_1 90001
   @id_2 90002
+  @id_3 90003
 
   defp make_op(entities \\ [], opts \\ [])
 
@@ -166,5 +167,22 @@ defmodule ECS.OperatorTest do
     assert {:ok, op_after} = dispatch(op, system)
     assert "STUFF" = Op.fetch_entity!(op_after, @id_1).cs.thing
     assert :gear = Op.fetch_entity!(op_after, @id_2).cs.thing
+  end
+
+  test "A system cannot create an entity with a simple update" do
+    # Systems should be able to add entities, but not by merely returning an
+    # Entity struct
+    op = make_op([Entity.new(@id_1, %{thing: :stuff}), Entity.new(@id_2, %{thing: :gear})])
+
+    system =
+      make_sys(:all, fn entity ->
+        entity =
+          update_in(entity.cs.thing, fn thing -> thing |> to_string |> String.upcase() end)
+          |> Map.put(:id, @id_3)
+
+        {:ok, entity}
+      end)
+
+    assert {:error, {:not_found, @id_3}} = dispatch(op, system)
   end
 end

@@ -96,7 +96,8 @@ defmodule ECS.Operator do
          # change have the same behaviour but were reversed when validated so we flatten first
          # [[:b2, :a2], [:b1, :a1]] --> [:b2, :a2, :b1, :a1] --> [:a1, :b1, :a2, :b2]
          changes = changes |> :lists.flatten() |> :lists.reverse(),
-         {this, _change_events} <- apply_changes(this, changes) do
+         {:ok, this, _change_events} <- apply_changes(this, changes) do
+      # @todo run hooks with change_events
       # @todo Should we dispatch change_events too ? If a system want to handle
       # entity update events, they are hooks to do san, or it can return a
       # custom event. So not need atm.
@@ -104,6 +105,8 @@ defmodule ECS.Operator do
       # @todo try/catch the dispatch
       dispatch_events(this, events)
       {:ok, this}
+    else
+      {:error, _} = error -> error
     end
   end
 
@@ -194,16 +197,25 @@ defmodule ECS.Operator do
     %{entities: entts} = this
 
     {entts, events} =
-      for change <- changes, reduce: {entts, []} do
-        {entts, events} -> apply_change(change, {entts, events})
-      end
+      List.foldl(changes, {entts, []}, fn change, {entts, events} ->
+        case apply_change(change, {entts, events}) do
+          {:ok, entts, events} -> {entts, events}
+          {:error, _} = error -> throw(error)
+        end
+      end)
 
     # @todo @optimize Do not reverse list
-    {%__MODULE__{this | entities: entts}, events |> :lists.reverse()}
+    {:ok, %__MODULE__{this | entities: entts}, events |> :lists.reverse()}
+  catch
+    {:error, _} = error -> error
   end
 
   defp apply_change(%Entity{id: id} = entt, {entts, events}) do
-    {Map.put(entts, id, entt), [{:updated, id} | events]}
+    if Map.has_key?(entts, id) do
+      {:ok, Map.put(entts, id, entt), [{:updated, id} | events]}
+    else
+      {:error, {:not_found, id}}
+    end
   end
 
   # @todo @optimize do not flatten the events, just recurse into lists here
