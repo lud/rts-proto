@@ -6,13 +6,20 @@ defmodule ECS.OperatorTest do
   @id_1 90001
   @id_2 90002
 
-  defp makeop(entities \\ [], opts \\ [])
+  defp make_op(entities \\ [], opts \\ [])
 
-  defp makeop(entities, opts) when is_list(entities) and is_list(opts) do
+  defp make_op(entities, opts) when is_list(entities) and is_list(opts) do
     Enum.reduce(entities, Op.new(opts), fn entt, op ->
       {:ok, op} = Op.add_entity(op, entt)
       op
     end)
+  end
+
+  defp make_sys(selection, run) do
+    ECS.TestUtils.FunSystem.new(%{
+      select: fn _op -> selection end,
+      run: run
+    })
   end
 
   def dispatch_event(event), do: send(self, {:dispatched, event})
@@ -35,7 +42,7 @@ defmodule ECS.OperatorTest do
   end
 
   test "Add, remove, replace entities" do
-    op = makeop()
+    op = make_op()
 
     # Add
     assert {:error, {:bad_entity, :x}} = Op.add_entity(op, :x)
@@ -58,7 +65,7 @@ defmodule ECS.OperatorTest do
   end
 
   test "Dispatch a simple system on all entities" do
-    op = makeop([Entity.new(@id_1, %{thing: :stuff}), Entity.new(@id_2, %{thing: :gear})])
+    op = make_op([Entity.new(@id_1, %{thing: :stuff}), Entity.new(@id_2, %{thing: :gear})])
 
     spid = self()
 
@@ -80,15 +87,13 @@ defmodule ECS.OperatorTest do
 
   test "Dispatch events from a system" do
     op =
-      makeop(
+      make_op(
         [
           Entity.new(@id_1, %{thing: :stuff}),
           Entity.new(@id_2, %{thing: :gear})
         ],
         dispatch_event: __MODULE__
       )
-
-    spid = self()
 
     system =
       ECS.TestUtils.FunSystem.new(%{
@@ -105,7 +110,61 @@ defmodule ECS.OperatorTest do
     assert_receive {:dispatched, {:some_event, @id_2, :gear}}
   end
 
-  test "A system can update an entity" do
-    assert false
+  test "A system can update a selection or a single entity" do
+    op =
+      make_op([
+        Entity.new(@id_1, %{thing: :stuff}),
+        Entity.new(@id_2, %{thing: :gear})
+      ])
+
+    # Returning the entity in a list
+
+    system =
+      make_sys(:all, fn entity ->
+        entity = update_in(entity.cs.thing, fn thing -> thing |> to_string |> String.upcase() end)
+
+        {:ok, [entity]}
+      end)
+
+    assert {:ok, op_after} = dispatch(op, system)
+    assert "STUFF" = Op.fetch_entity!(op_after, @id_1).cs.thing
+    assert "GEAR" = Op.fetch_entity!(op_after, @id_2).cs.thing
+
+    # returning a single entity
+
+    system =
+      make_sys(:all, fn entity ->
+        entity = update_in(entity.cs.thing, fn thing -> thing |> to_string |> String.upcase() end)
+
+        {:ok, entity}
+      end)
+
+    assert {:ok, op_after} = dispatch(op, system)
+    assert "STUFF" = Op.fetch_entity!(op_after, @id_1).cs.thing
+    assert "GEAR" = Op.fetch_entity!(op_after, @id_2).cs.thing
+
+    # returning something else
+
+    system =
+      make_sys(:all, fn entity ->
+        entity = update_in(entity.cs.thing, fn thing -> thing |> to_string |> String.upcase() end)
+
+        {:ok, [:some_non_entity_value]}
+      end)
+
+    assert {:error, {:bad_change, :some_non_entity_value}} = dispatch(op, system)
+
+    # target a single entity
+
+    system =
+      make_sys({:id, @id_1}, fn entity ->
+        entity = update_in(entity.cs.thing, fn thing -> thing |> to_string |> String.upcase() end)
+
+        {:ok, entity}
+      end)
+
+    assert {:ok, op_after} = dispatch(op, system)
+    assert "STUFF" = Op.fetch_entity!(op_after, @id_1).cs.thing
+    assert :gear = Op.fetch_entity!(op_after, @id_2).cs.thing
   end
 end
