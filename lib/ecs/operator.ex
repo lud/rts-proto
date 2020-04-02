@@ -1,13 +1,24 @@
 defmodule ECS.Operator do
   alias ECS.{Entity}
 
-  defstruct entities: %{}, ctx: %{}
+  defstruct entities: %{}, ctx: %{}, dispatch_event: nil
 
   @type t :: %__MODULE__{entities: %{optional(any) => Entity.t()}, ctx: %{optional(atom) => any}}
   @type selection :: :all
 
-  def new(),
-    do: %__MODULE__{}
+  def new(opts \\ []) when is_list(opts) do
+    dispatch_event = resolve_dispatcher(Keyword.get(opts, :dispatch_event, NoDispatcher))
+    %__MODULE__{dispatch_event: dispatch_event}
+  end
+
+  defp resolve_dispatcher(mod) when is_atom(mod),
+    do: {mod, :dispatch_event, []}
+
+  defp resolve_dispatcher({mod, args}) when is_atom(mod) and is_list(args),
+    do: {mod, :dispatch_event, args}
+
+  defp resolve_dispatcher({mod, fun, args}) when is_atom(mod) and is_atom(fun) and is_list(args),
+    do: {mod, fun, args}
 
   def entities_count(%__MODULE__{entities: entities}),
     do: Kernel.map_size(entities)
@@ -66,7 +77,8 @@ defmodule ECS.Operator do
 
     with {:ok, changes, events, sstate} <- run_system(this, mod, sstate, rselect) do
       IO.puts("@todo apply changes: #{inspect(changes)}")
-      IO.puts("@todo dispatch events: #{inspect(events)}")
+      # @todo try/catch the dispatch
+      dispatch_events(this, events)
       {:ok, this}
     end
   end
@@ -117,7 +129,7 @@ defmodule ECS.Operator do
     end
   end
 
-  ## Helpers for the System behaviour modules
-  @spec select_all(ECS.Operator.t()) :: {:ok, selection}
-  def select_all(%__MODULE__{entities: entts}), do: {:ok, entts}
+  defp dispatch_events(%{dispatch_event: {m, f, a}}, events) do
+    :lists.foreach(fn event -> apply(m, f, [event | a]) end, events)
+  end
 end

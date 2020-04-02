@@ -6,14 +6,27 @@ defmodule ECS.OperatorTest do
   @id_1 90001
   @id_2 90002
 
-  defp makeop(), do: Op.new()
+  defp makeop(entities \\ [], opts \\ [])
 
-  defp makeop(entities) when is_list(entities),
-    do:
-      Enum.reduce(entities, makeop(), fn entt, op ->
-        {:ok, op} = Op.add_entity(op, entt)
-        op
-      end)
+  defp makeop(entities, opts) when is_list(entities) and is_list(opts) do
+    Enum.reduce(entities, Op.new(opts), fn entt, op ->
+      {:ok, op} = Op.add_entity(op, entt)
+      op
+    end)
+  end
+
+  def dispatch_event(event), do: send(self, {:dispatched, event})
+
+  defmacro dispatch(op, system) do
+    quote do
+      label = elem(__ENV__.function(), 0)
+      op = unquote(op)
+      system = unquote(system)
+      {t, val} = :timer.tc(Op, :dispatch, [op, system])
+      IO.puts("[#{label}] dispatch took #{t / 100} ms")
+      val
+    end
+  end
 
   test "Create an operator" do
     assert op = Op.new()
@@ -58,10 +71,41 @@ defmodule ECS.OperatorTest do
         end
       })
 
-    assert {:ok, op} = Op.dispatch(op, system)
+    assert {:ok, op} = dispatch(op, system)
 
     # Entities order is not a guarantee
     assert_receive {:thing, :gear}
     assert_receive {:thing, :stuff}
+  end
+
+  test "Dispatch events from a system" do
+    op =
+      makeop(
+        [
+          Entity.new(@id_1, %{thing: :stuff}),
+          Entity.new(@id_2, %{thing: :gear})
+        ],
+        dispatch_event: __MODULE__
+      )
+
+    spid = self()
+
+    system =
+      ECS.TestUtils.FunSystem.new(%{
+        select: fn _op -> :all end,
+        run: fn %Entity{id: id, cs: %{thing: thing}} when thing in [:gear, :stuff] ->
+          {:ok, [], {:some_event, id, thing}}
+        end
+      })
+
+    assert {:ok, op} = dispatch(op, system)
+
+    # Entities order is not a guarantee
+    assert_receive {:dispatched, {:some_event, @id_1, :stuff}}
+    assert_receive {:dispatched, {:some_event, @id_2, :gear}}
+  end
+
+  test "A system can update an entity" do
+    assert false
   end
 end
