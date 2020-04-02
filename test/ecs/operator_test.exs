@@ -110,14 +110,8 @@ defmodule ECS.OperatorTest do
     assert_receive {:dispatched, {:some_event, @id_2, :gear}}
   end
 
-  test "A system can update a selection or a single entity" do
-    op =
-      make_op([
-        Entity.new(@id_1, %{thing: :stuff}),
-        Entity.new(@id_2, %{thing: :gear})
-      ])
-
-    # Returning the entity in a list
+  test "A system can update a selection" do
+    op = make_op([Entity.new(@id_1, %{thing: :stuff}), Entity.new(@id_2, %{thing: :gear})])
 
     system =
       make_sys(:all, fn entity ->
@@ -129,8 +123,10 @@ defmodule ECS.OperatorTest do
     assert {:ok, op_after} = dispatch(op, system)
     assert "STUFF" = Op.fetch_entity!(op_after, @id_1).cs.thing
     assert "GEAR" = Op.fetch_entity!(op_after, @id_2).cs.thing
+  end
 
-    # returning a single entity
+  test "A system can return an entity to update instead of a list" do
+    op = make_op([Entity.new(@id_1, %{thing: :stuff}), Entity.new(@id_2, %{thing: :gear})])
 
     system =
       make_sys(:all, fn entity ->
@@ -142,8 +138,10 @@ defmodule ECS.OperatorTest do
     assert {:ok, op_after} = dispatch(op, system)
     assert "STUFF" = Op.fetch_entity!(op_after, @id_1).cs.thing
     assert "GEAR" = Op.fetch_entity!(op_after, @id_2).cs.thing
+  end
 
-    # returning something else
+  test "A system must return valid changes" do
+    op = make_op([Entity.new(@id_1, %{thing: :stuff}), Entity.new(@id_2, %{thing: :gear})])
 
     system =
       make_sys(:all, fn entity ->
@@ -153,8 +151,10 @@ defmodule ECS.OperatorTest do
       end)
 
     assert {:error, {:bad_change, :some_non_entity_value}} = dispatch(op, system)
+  end
 
-    # target a single entity
+  test "A system can update a single entity" do
+    op = make_op([Entity.new(@id_1, %{thing: :stuff}), Entity.new(@id_2, %{thing: :gear})])
 
     system =
       make_sys({:id, @id_1}, fn entity ->
