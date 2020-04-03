@@ -83,7 +83,7 @@ defmodule ECS.Operator do
       |> mod.select(this)
       |> resolve_selection(this)
 
-    with {:ok, changes, events, sstate} <- run_system(this, mod, sstate, rselect),
+    with {:ok, changes, events, _sstate} <- run_system(this, mod, sstate, rselect),
 
          # @todo @optimize Allow to disable reversing in production
          # @todo @optimize If changes validation is disabled, do reverse then flatten as for events
