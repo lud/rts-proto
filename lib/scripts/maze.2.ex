@@ -15,11 +15,11 @@ defmodule Maze2 do
     maze = %{
       grid: %{
         {0, 0} => :path,
-        {x_max, y_max} => :path,
-        {div(x_max, 4), div(y_max, 4)} => :path,
-        {div(x_max, 4) * 3, div(y_max, 4)} => :path,
-        {div(x_max, 4), div(y_max, 4) * 3} => :path,
-        {div(x_max, 4) * 3, div(y_max, 4) * 3} => :path
+        {x_max, y_max} => :path
+        # {div(x_max, 4), div(y_max, 4)} => :path,
+        # {div(x_max, 4) * 3, div(y_max, 4)} => :path,
+        # {div(x_max, 4), div(y_max, 4) * 3} => :path,
+        # {div(x_max, 4) * 3, div(y_max, 4) * 3} => :path
       },
       dim: {x_min, y_min, x_max, y_max},
       # One set of edges per team
@@ -38,9 +38,30 @@ defmodule Maze2 do
     maze |> loop(1_000_000)
   end
 
+  def in_bounds?(%{dim: {x_min, y_min, x_max, y_max}}, {x, y})
+      when x < x_min or x > x_max or y < y_min or y > y_max,
+      do: false
+
+  def in_bounds?(%{dim: _grid}, {_x, _y}),
+    do: true
+
+  def get(%{dim: {x_min, y_min, x_max, y_max}}, {x, y})
+      when x < x_min or x > x_max or y < y_min or y > y_max do
+    throw(:out_of_bounds)
+  end
+
+  def get(%{grid: grid}, {x, y}) do
+    Map.get(grid, {x, y}, {:unknown, {x, y}})
+  end
+
   def path?(%{grid: grid}, {x, y}) do
     Map.get(grid, {x, y}) == :path
   end
+
+  def x_min(%{dim: {x_min, _, _, _}}), do: x_min
+  def x_max(%{dim: {_, _, x_max, _}}), do: x_max
+  def y_min(%{dim: {_, y_min, _, _}}), do: y_min
+  def y_max(%{dim: {_, _, _, y_max}}), do: y_max
 
   defp loop(maze, 0),
     do: maze
